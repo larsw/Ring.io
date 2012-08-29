@@ -1,25 +1,25 @@
-using System;
-using System.Net;
-using System.Threading.Tasks;
-using Ring.io.Messages;
-using ServiceStack.Text;
-
 namespace Ring.io
 {
-    public class MessageBus : IRequestHandler, IResponseHandler
+    using System;
+    using System.Net;
+    using ServiceStack.Text;
+
+    using Ring.io.Messages;
+
+    public class MessageBus : IRequestHandler, IResponseHandler, IMessageBus 
     {
         private Node node;
-        private ZMQTransport transport;
-        private JsonSerializer<Message> serializer;
+        private readonly ITransport transport;
+        private readonly JsonSerializer<Message> serializer;
 
-        public MessageBus(Node node, ZMQTransport transport)
+        public MessageBus(Node node, ITransport transport)
         {
             this.node = node;
             this.transport = transport;
-            this.serializer = new JsonSerializer<Message>();
+            serializer = new JsonSerializer<Message>();
 
-            this.transport.RequestHandlers.Add(this);
-            this.transport.ResponseHandlers.Add(this);
+            this.transport.RegisterRequestHandler(this);
+            this.transport.RegisterResponseHandler(this);
         }
 
         public void HandleRequest(Message request, Message response)
@@ -41,7 +41,7 @@ namespace Ring.io
                 var heartbeat = new HeartBeat();
                 heartbeat.Nodes = node.Nodes;
 
-                this.AddMessage<HeartBeat>(response, heartbeat);
+                response.Parts.Add(heartbeat.GetType().Name.ToLowerInvariant(), JsonSerializer.SerializeToString(heartbeat));
 
                 string[] sourceAddress = request.Source.Split(':');
                 var sourceEndPoint = new IPEndPoint(IPAddress.Parse(sourceAddress[0]), int.Parse(sourceAddress[1]));
@@ -68,15 +68,16 @@ namespace Ring.io
                 this.node.Entry.Address,
                 message.Id));
 
-            message.Source = this.transport.EndPoint.ToString();
             string msg = this.serializer.SerializeToString(message);
+            transport.Prepare(message);
             this.transport.Send(msg, endPoint);
         }
 
-        public void AddMessage<T>(Message message, T msg)
+        public Message CreateMessage(object part)
         {
-            string serializedMessage = JsonSerializer.SerializeToString<T>(msg);
-            message.Messages.Add(msg.GetType().Name.ToLowerInvariant(), serializedMessage);
+            var message = new Message();
+            message.Parts.Add(part.GetType().Name.ToLowerInvariant(), JsonSerializer.SerializeToString(part));
+            return message;
         }
     }
 }

@@ -1,25 +1,27 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Numerics;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Ring.io.Messages;
-
-namespace Ring.io
+﻿namespace Ring.io
 {
-    public class Node
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Net;
+    using System.Numerics;
+    using System.Security.Cryptography;
+    using System.Text;
+    using System.Threading;
+
+    using Ring.io.Messages;
+
+    public class Node : IDisposable
     {
         private const int DEFAULT_PORT = 5991;
         private const string DEFAULT_IPADDRESS = "127.0.0.1";
-        private ZMQTransport transport;
+        //private ITransport transport;
         private Timer heartBeatTimer;
         private MD5 hash;
         private readonly Random random = new Random();
-        private MessageBus messageBus;
+        private IMessageBus messageBus;
+        private IMessageBusFactory _messageBusFactory;
+        private bool _disposed;
 
         public Node()
             : this(DEFAULT_IPADDRESS, DEFAULT_PORT)
@@ -38,14 +40,16 @@ namespace Ring.io
         }
 
         public Node(string ipAddress, int port)
-            : this(new IPEndPoint(IPAddress.Parse(ipAddress), port))
+            : this(new IPEndPoint(IPAddress.Parse(ipAddress), port), new MessageBusFactory())
         {
         }
 
-        public Node(IPEndPoint endpoint)
+        public Node(IPEndPoint endpoint, IMessageBusFactory messageBusFactory)
         {
+            _messageBusFactory = messageBusFactory;
             this.Nodes = new Dictionary<string, HashTableEntry>();
             this.Entry = new HashTableEntry();
+            this.Endpoint = endpoint;
             this.Entry.Address = endpoint.ToString();
 
             hash = MD5.Create();
@@ -57,17 +61,20 @@ namespace Ring.io
         public HashTableEntry Entry { get; private set; }
         public Dictionary<string, HashTableEntry> Nodes { get; private set; }
 
+        public IPEndPoint Endpoint { get; private set; }
+
         public void Open()
         {
-            if (transport != null)
-            {
-                throw new InvalidOperationException("Node already active");
-            }
+            if (_disposed == true) throw new ObjectDisposedException("Object is disposed.");
+            //if (transport != null)
+            //{
+            //    throw new InvalidOperationException("Node already active");
+            //}
 
-            // Initialize the communication transport.
-            this.transport = new ZMQTransport(IPEndPointParser.Parse(this.Entry.Address));
-            this.transport.Open();
-            this.messageBus = new MessageBus(this, this.transport);
+            //// Initialize the communication transport.
+            //this.transport = new ZMQTransport(IPEndPointParser.Parse(this.Entry.Address));
+            //this.transport.Open();
+            this.messageBus = _messageBusFactory.Create(this); //new MessageBus(this);
 
             // Initialize the heartbeat timer.
             heartBeatTimer = new Timer(HeartBeatTimer, null, 1000, 1000);
@@ -76,7 +83,23 @@ namespace Ring.io
         public void Close()
         {
             heartBeatTimer.Change(Timeout.Infinite, Timeout.Infinite);
-            this.transport.Close();
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed == true) throw new ObjectDisposedException("Object is disposed.");
+
+            if (disposing)
+            {
+                heartBeatTimer.Dispose();
+                _disposed = true;
+            }
         }
 
         // TODO: This should take only seed IP:Port since thats all the config will have
@@ -94,15 +117,17 @@ namespace Ring.io
             var heartbeat = new HeartBeat();
             heartbeat.Nodes = this.Nodes;
 
-            var msg = new Message();
-            messageBus.AddMessage<HeartBeat>(msg, heartbeat);
+            //var msg = new Message(); {Parts = {{heartbeat.GetType().Name.ToLowerInvariant(), }}
+            //
+            var message = messageBus.CreateMessage(heartbeat);
+            //messageBus.AddPart<HeartBeat>(msg, heartbeat);
 
             // Choose a random node from the ring to gossip with.
             var nodeNumber = random.Next(0, this.Nodes.Count);
             if (this.Nodes.Count > 0)
             {
                 var destinationEndpoint = IPEndPointParser.Parse(this.Nodes.ElementAt(nodeNumber).Value.Address);
-                this.messageBus.Send(msg, destinationEndpoint);
+                this.messageBus.Send(message, destinationEndpoint);
             }
         }
     }

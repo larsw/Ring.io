@@ -68,7 +68,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="HashTableEntry.cs" />
-    <Compile Include="MessageBus.cs" />
+    <Compile Include="IMessageBus.cs" />
+    <Compile Include="IMessageBusFactory.cs" />
+    <Compile Include="ITransportFactory.cs" />
+    <Compile Include="MessageBus.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="MessageBusFactory.cs" />
     <Compile Include="Messages\HeartBeat.cs" />
     <Compile Include="Messages\Message.cs" />
     <Compile Include="Node.cs" />
@@ -76,6 +82,7 @@
     <Compile Include="IPEndPointParser.cs" />
     <Compile Include="IResponseHandler.cs" />
     <Compile Include="IRequestHandler.cs" />
+    <Compile Include="TransportFactory.cs" />
     <Compile Include="ZMQTransport.cs" />
   </ItemGroup>
   <ItemGroup>

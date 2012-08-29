@@ -1,11 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Text;
-
-namespace Ring.io
+﻿namespace Ring.io
 {
+    using System;
+    using System.Net;
+
     public class IPEndPointParser
     {
         public static IPEndPoint Parse(String endPoint)
